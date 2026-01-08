@@ -32,19 +32,19 @@
  */
 #include "VS1053.h"
 
-VS1053::VS1053(uint8_t _cs_pin, uint8_t _dcs_pin, uint8_t _dreq_pin)
-        : cs_pin(_cs_pin), dcs_pin(_dcs_pin), dreq_pin(_dreq_pin) {
+VS1053::VS1053(uint8_t _cs_pin, uint8_t _dcs_pin, uint8_t _dreq_pin, SPIClass *_spi)
+    : cs_pin(_cs_pin), dcs_pin(_dcs_pin), dreq_pin(_dreq_pin), spi(_spi) {
 }
 
 uint16_t VS1053::read_register(uint8_t _reg) const {
     uint16_t result;
 
     control_mode_on();
-    SPI.write(3);    // Read operation
-    SPI.write(_reg); // Register to read (0..0xF)
+    spi->write(3);    // Read operation
+    spi->write(_reg); // Register to read (0..0xF)
     // Note: transfer16 does not seem to work
-    result = (SPI.transfer(0xFF) << 8) | // Read 16 bits data
-             (SPI.transfer(0xFF));
+    result = (spi->transfer(0xFF) << 8) | // Read 16 bits data
+             (spi->transfer(0xFF));
     await_data_request(); // Wait for DREQ to be HIGH again
     control_mode_off();
     return result;
@@ -52,9 +52,9 @@ uint16_t VS1053::read_register(uint8_t _reg) const {
 
 void VS1053::writeRegister(uint8_t _reg, uint16_t _value) const {
     control_mode_on();
-    SPI.write(2);        // Write operation
-    SPI.write(_reg);     // Register to write (0..0xF)
-    SPI.write16(_value); // Send 16 bits data
+    spi->write(2);        // Write operation
+    spi->write(_reg);     // Register to write (0..0xF)
+    spi->write16(_value); // Send 16 bits data
     await_data_request();
     control_mode_off();
 }
@@ -71,7 +71,7 @@ void VS1053::sdi_send_buffer(uint8_t *data, size_t len) {
             chunk_length = vs1053_chunk_size;
         }
         len -= chunk_length;
-        SPI.writeBytes(data, chunk_length);
+        spi->writeBytes(data, chunk_length);
         data += chunk_length;
     }
     data_mode_off();
@@ -90,7 +90,7 @@ void VS1053::sdi_send_fillers(size_t len) {
         }
         len -= chunk_length;
         while (chunk_length--) {
-            SPI.write(endFillByte);
+            spi->write(endFillByte);
         }
     }
     data_mode_off();
@@ -103,7 +103,7 @@ void VS1053::wram_write(uint16_t address, uint16_t data) {
 
 uint16_t VS1053::wram_read(uint16_t address) {
     writeRegister(SCI_WRAMADDR, address); // Start reading from WRAM
-    return read_register(SCI_WRAM);        // Read back result
+    return read_register(SCI_WRAM);       // Read back result
 }
 
 bool VS1053::testComm(const char *header) {
@@ -129,10 +129,10 @@ bool VS1053::testComm(const char *header) {
         delta = 3; // Fast SPI, more loops
     }
 
-    LOG("%s", header);  // Show a header
+    LOG("%s", header); // Show a header
 
     for (i = 0; (i < 0xFFFF) && (cnt < 20); i += delta) {
-        writeRegister(SCI_VOL, i);         // Write data to SCI_VOL
+        writeRegister(SCI_VOL, i);          // Write data to SCI_VOL
         r1 = read_register(SCI_VOL);        // Read back for the first time
         r2 = read_register(SCI_VOL);        // Read back a second time
         if (r1 != r2 || i != r1 || i != r2) // Check for 2 equal reads
@@ -168,8 +168,8 @@ void VS1053::begin() {
     delay(20);
     // printDetails("20 msec after reset");
     if (testComm("Slow SPI,Testing VS1053 read/write registers...\n")) {
-        //softReset();
-        // Switch on the analog parts
+        // softReset();
+        //  Switch on the analog parts
         writeRegister(SCI_AUDATA, 44101); // 44.1kHz stereo
         // The next clocksetting allows SPI clocking at 5 MHz, 4 MHz is safe then.
         writeRegister(SCI_CLOCKF, 6 << 12); // Normal clock settings multiplyer 3.0 = 12.2 MHz
@@ -181,7 +181,7 @@ void VS1053::begin() {
         await_data_request();
         endFillByte = wram_read(0x1E06) & 0xFF;
         LOG("endFillByte is %X\n", endFillByte);
-        //printDetails("After last clocksetting") ;
+        // printDetails("After last clocksetting") ;
         delay(100);
     }
 }
@@ -191,7 +191,7 @@ void VS1053::setVolume(uint8_t vol) {
     // Input value is 0..100.  100 is the loudest.
     uint8_t valueL, valueR; // Values to send to SCI_VOL
 
-    curvol = vol;                         // Save for later use
+    curvol = vol; // Save for later use
     valueL = vol;
     valueR = vol;
 
@@ -278,7 +278,7 @@ void VS1053::softReset() {
  * quality sound, the average speed error should be within 0.5%, the bitrate should not exceed
  * 160 kbit/s and VBR should not be used. For details, see Application Notes for VS10XX. This
  * mode only works with MP3 and WAV files."
-*/
+ */
 
 void VS1053::streamModeOn() {
     LOG("Performing streamModeOn\n");
@@ -320,7 +320,7 @@ void VS1053::printDetails(const char *header) {
  * Read more here: http://www.bajdi.com/lcsoft-vs1053-mp3-module/#comment-33773
  */
 void VS1053::switchToMp3Mode() {
-    wram_write(ADDR_REG_GPIO_DDR_RW, 3); // GPIO DDR = 3
+    wram_write(ADDR_REG_GPIO_DDR_RW, 3);   // GPIO DDR = 3
     wram_write(ADDR_REG_GPIO_ODATA_RW, 0); // GPIO ODATA = 0
     delay(100);
     LOG("Switched to mp3 mode\n");
@@ -344,19 +344,19 @@ void VS1053::enableI2sOut(VS1053_I2S_RATE i2sRate) {
 
     uint16_t i2s_config = 0x000c; // Enable MCLK(3); I2S(2)
     switch (i2sRate) {
-        case VS1053_I2S_RATE_192_KHZ:
-            i2s_config |= 0x0002;
-            break;
-        case VS1053_I2S_RATE_96_KHZ:
-            i2s_config |= 0x0001;
-            break;
-        default:
-        case VS1053_I2S_RATE_48_KHZ:
-            // 0x0000
-            break;
+    case VS1053_I2S_RATE_192_KHZ:
+        i2s_config |= 0x0002;
+        break;
+    case VS1053_I2S_RATE_96_KHZ:
+        i2s_config |= 0x0001;
+        break;
+    default:
+    case VS1053_I2S_RATE_48_KHZ:
+        // 0x0000
+        break;
     }
 
-    wram_write(ADDR_REG_I2S_CONFIG_RW, i2s_config );
+    wram_write(ADDR_REG_I2S_CONFIG_RW, i2s_config);
 }
 
 /**
@@ -373,12 +373,12 @@ bool VS1053::isChipConnected() {
 /**
  * get the Version Number for the VLSI chip
  * VLSI datasheet: 0 for VS1001, 1 for VS1011, 2 for VS1002, 3 for VS1003, 4 for VS1053 and VS8053,
- * 5 for VS1033, 7 for VS1103, and 6 for VS1063. 
+ * 5 for VS1033, 7 for VS1103, and 6 for VS1063.
  */
 uint16_t VS1053::getChipVersion() {
     uint16_t status = read_register(SCI_STATUS);
-       
-    return ( (status & 0x00F0) >> 4);
+
+    return ((status & 0x00F0) >> 4);
 }
 
 /**
@@ -436,20 +436,20 @@ void VS1053::adjustRate(long ppm2) {
  * Load a patch or plugin
  *
  * Patches can be found on the VLSI Website http://www.vlsi.fi/en/support/software/vs10xxpatches.html
- *  
- * Please note that loadUserCode only works for compressed plugins (file ending .plg). 
- * To include them, rename them to file ending .h 
- * Please also note that, in order to avoid multiple definitions, if you are using more than one patch, 
+ *
+ * Please note that loadUserCode only works for compressed plugins (file ending .plg).
+ * To include them, rename them to file ending .h
+ * Please also note that, in order to avoid multiple definitions, if you are using more than one patch,
  * it is necessary to rename the name of the array plugin[] and the name of PLUGIN_SIZE to names of your choice.
- * example: after renaming plugin[] to plugin_myname[] and PLUGIN_SIZE to PLUGIN_MYNAME_SIZE 
+ * example: after renaming plugin[] to plugin_myname[] and PLUGIN_SIZE to PLUGIN_MYNAME_SIZE
  * the method is called by player.loadUserCode(plugin_myname, PLUGIN_MYNAME_SIZE)
  * It is also possible to just rename the array plugin[] to a name of your choice
- * example: after renaming plugin[] to plugin_myname[]  
+ * example: after renaming plugin[] to plugin_myname[]
  * the method is called by player.loadUserCode(plugin_myname, sizeof(plugin_myname)/sizeof(plugin_myname[0]))
  */
-void VS1053::loadUserCode(const unsigned short* plugin, unsigned short plugin_size) {
+void VS1053::loadUserCode(const unsigned short *plugin, unsigned short plugin_size) {
     int i = 0;
-    while (i<plugin_size) {
+    while (i < plugin_size) {
         unsigned short addr, n, val;
         addr = plugin[i++];
         n = plugin[i++];
@@ -459,7 +459,7 @@ void VS1053::loadUserCode(const unsigned short* plugin, unsigned short plugin_si
             while (n--) {
                 writeRegister(addr, val);
             }
-        } else {           /* Copy run, copy n samples */
+        } else { /* Copy run, copy n samples */
             while (n--) {
                 val = plugin[i++];
                 writeRegister(addr, val);
@@ -472,5 +472,5 @@ void VS1053::loadUserCode(const unsigned short* plugin, unsigned short plugin_si
  * Load the latest generic firmware patch
  */
 void VS1053::loadDefaultVs1053Patches() {
-   loadUserCode(PATCHES,PATCHES_SIZE);
+    loadUserCode(PATCHES, PATCHES_SIZE);
 };

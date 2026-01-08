@@ -34,9 +34,9 @@
 #ifndef VS1053_H
 #define VS1053_H
 
+#include "ConsoleLogger.h"
 #include <Arduino.h>
 #include <SPI.h>
-#include "ConsoleLogger.h"
 
 #include "patches/vs1053b-patches.h"
 
@@ -47,20 +47,20 @@ enum VS1053_I2S_RATE {
 };
 
 class VS1053 {
-private:
-    uint8_t cs_pin;                         // Pin where CS line is connected
-    uint8_t dcs_pin;                        // Pin where DCS line is connected
-    uint8_t dreq_pin;                       // Pin where DREQ line is connected
-    uint8_t curvol;                         // Current volume setting 0..100%
-    int8_t  curbalance = 0;                 // Current balance setting -100..100
-                                            // (-100 = right channel silent, 100 = left channel silent)
+  private:
+    uint8_t cs_pin;        // Pin where CS line is connected
+    uint8_t dcs_pin;       // Pin where DCS line is connected
+    uint8_t dreq_pin;      // Pin where DREQ line is connected
+    uint8_t curvol;        // Current volume setting 0..100%
+    int8_t curbalance = 0; // Current balance setting -100..100
+                           // (-100 = right channel silent, 100 = left channel silent)
     const uint8_t vs1053_chunk_size = 32;
     // SCI Register
     const uint8_t SCI_MODE = 0x0;
     const uint8_t SCI_STATUS = 0x1;
     const uint8_t SCI_BASS = 0x2;
     const uint8_t SCI_CLOCKF = 0x3;
-    const uint8_t SCI_DECODE_TIME = 0x4;        // current decoded time in full seconds
+    const uint8_t SCI_DECODE_TIME = 0x4; // current decoded time in full seconds
     const uint8_t SCI_AUDATA = 0x5;
     const uint8_t SCI_WRAM = 0x6;
     const uint8_t SCI_WRAMADDR = 0x7;
@@ -70,47 +70,48 @@ private:
     const uint8_t SCI_AICTRL1 = 0xD;
     const uint8_t SCI_num_registers = 0xF;
     // SCI_MODE bits
-    const uint8_t SM_SDINEW = 11;           // Bitnumber in SCI_MODE always on
-    const uint8_t SM_RESET = 2;             // Bitnumber in SCI_MODE soft reset
-    const uint8_t SM_CANCEL = 3;            // Bitnumber in SCI_MODE cancel song
-    const uint8_t SM_TESTS = 5;             // Bitnumber in SCI_MODE for tests
-    const uint8_t SM_LINE1 = 14;            // Bitnumber in SCI_MODE for Line input
-    const uint8_t SM_STREAM = 6;            // Bitnumber in SCI_MODE for Streaming Mode
+    const uint8_t SM_SDINEW = 11; // Bitnumber in SCI_MODE always on
+    const uint8_t SM_RESET = 2;   // Bitnumber in SCI_MODE soft reset
+    const uint8_t SM_CANCEL = 3;  // Bitnumber in SCI_MODE cancel song
+    const uint8_t SM_TESTS = 5;   // Bitnumber in SCI_MODE for tests
+    const uint8_t SM_LINE1 = 14;  // Bitnumber in SCI_MODE for Line input
+    const uint8_t SM_STREAM = 6;  // Bitnumber in SCI_MODE for Streaming Mode
 
     const uint16_t ADDR_REG_GPIO_DDR_RW = 0xc017;
     const uint16_t ADDR_REG_GPIO_VAL_R = 0xc018;
     const uint16_t ADDR_REG_GPIO_ODATA_RW = 0xc019;
     const uint16_t ADDR_REG_I2S_CONFIG_RW = 0xc040;
 
-    SPISettings VS1053_SPI;                 // SPI settings for this slave
-    uint8_t endFillByte;                    // Byte to send when stopping song
-protected:
+    SPISettings VS1053_SPI; // SPI settings for this slave
+    uint8_t endFillByte;    // Byte to send when stopping song
+    SPIClass *spi;          // SPI bus
+  protected:
     inline void await_data_request() const {
         while (!digitalRead(dreq_pin)) {
-            yield();                        // Very short delay
+            yield(); // Very short delay
         }
     }
 
     inline void control_mode_on() const {
-        SPI.beginTransaction(VS1053_SPI);   // Prevent other SPI users
-        digitalWrite(dcs_pin, HIGH);        // Bring slave in control mode
+        spi->beginTransaction(VS1053_SPI); // Prevent other SPI users
+        digitalWrite(dcs_pin, HIGH);       // Bring slave in control mode
         digitalWrite(cs_pin, LOW);
     }
 
     inline void control_mode_off() const {
-        digitalWrite(cs_pin, HIGH);         // End control mode
-        SPI.endTransaction();               // Allow other SPI users
+        digitalWrite(cs_pin, HIGH); // End control mode
+        spi->endTransaction();      // Allow other SPI users
     }
 
     inline void data_mode_on() const {
-        SPI.beginTransaction(VS1053_SPI);   // Prevent other SPI users
-        digitalWrite(cs_pin, HIGH);         // Bring slave in data mode
+        spi->beginTransaction(VS1053_SPI); // Prevent other SPI users
+        digitalWrite(cs_pin, HIGH);        // Bring slave in data mode
         digitalWrite(dcs_pin, LOW);
     }
 
     inline void data_mode_off() const {
-        digitalWrite(dcs_pin, HIGH);        // End data mode
-        SPI.endTransaction();               // Allow other SPI users
+        digitalWrite(dcs_pin, HIGH); // End data mode
+        spi->endTransaction();       // Allow other SPI users
     }
 
     uint16_t read_register(uint8_t _reg) const;
@@ -123,9 +124,9 @@ protected:
 
     uint16_t wram_read(uint16_t address);
 
-public:
+  public:
     // Constructor.  Only sets pin values.  Doesn't touch the chip.  Be sure to call begin()!
-    VS1053(uint8_t _cs_pin, uint8_t _dcs_pin, uint8_t _dreq_pin);
+    VS1053(uint8_t _cs_pin, uint8_t _dcs_pin, uint8_t _dreq_pin, SPIClass *spi = &SPI);
 
     // Begin operation.  Sets pins correctly, and prepares SPI bus.
     void begin();
@@ -172,9 +173,9 @@ public:
 
     // Streaming Mode On
     void streamModeOn();
-    
+
     // Default: Streaming Mode Off
-    void streamModeOff();      
+    void streamModeOff();
 
     // An optional switch preventing the module starting up in MIDI mode
     void switchToMp3Mode();
@@ -189,7 +190,7 @@ public:
     bool isChipConnected();
 
     // gets Version of the VLSI chip being used
-    uint16_t getChipVersion();    
+    uint16_t getChipVersion();
 
     // Provides SCI_DECODE_TIME register value
     uint16_t getDecodedTime();
@@ -203,7 +204,7 @@ public:
 
     // Load a patch or plugin to fix bugs and/or extend functionality.
     // For more info about patches see http://www.vlsi.fi/en/support/software/vs10xxpatches.html
-    void loadUserCode(const unsigned short* plugin, unsigned short plugin_size);
+    void loadUserCode(const unsigned short *plugin, unsigned short plugin_size);
 
     // Loads the latest generic firmware patch.
     void loadDefaultVs1053Patches();
