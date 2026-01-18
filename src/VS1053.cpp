@@ -250,7 +250,7 @@ void VS1053::stopSong() {
 
     sdi_send_fillers(2052);
     delay(10);
-    writeRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_CANCEL));
+    writeRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_CANCEL) | _BV(SM_LINE1));
     for (i = 0; i < 200; i++) {
         sdi_send_fillers(32);
         modereg = read_register(SCI_MODE); // Read status
@@ -266,7 +266,7 @@ void VS1053::stopSong() {
 
 void VS1053::softReset() {
     LOG("Performing soft-reset\n");
-    writeRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET));
+    writeRegister(SCI_MODE, _BV(SM_SDINEW) | _BV(SM_RESET) | _BV(SM_LINE1));
     delay(10);
     await_data_request();
 }
